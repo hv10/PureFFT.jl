@@ -1,0 +1,4 @@
+name = "PureFFT"
+uuid = "371cf0be-dc13-42a8-a4a5-30846e2aa696"
+authors = ["hv10 <noeldanz@gmail.com>"]
+version = "0.1.0"
