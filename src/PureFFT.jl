@@ -1,57 +1,137 @@
 module PureFFT
+using Primes
+import Base.show
 
-function pad_to_power_of_two(a::AbstractArray{<:Number})
-    n = length(a)
-    next_pow = 2^ceil(Int, log2(n))  # Find the next power of 2
-    if next_pow != n
-        return vcat(a, zeros(eltype(a), next_pow - n))  # Pad with zeros
-    else
-        return a
+struct FFTPlan
+    f::Int
+    method::Function
+    plan::Vector{FFTPlan}
+end
+function Base.show(io::IO, mime::MIME"text/plain", fp::FFTPlan)
+    indent = get(io, :indent, 0)
+    println(io, ' '^indent, "> $(fp.f) | $(fp.method)")
+    for p in fp.plan
+        show(IOContext(io, :indent => indent + 2), mime, p)
     end
 end
+Base.push!(fp::FFTPlan, args...) = push!(fp.plan, args...)
+FFTPlan(f::Int, method::Function) = FFTPlan(f, method, Vector{FFTPlan}())
 
-function _fft!(a::AbstractVector{<:Complex}, invert::Bool)
-    n = length(a)
-    if n == 1
-        return
+get_factor_arr(N) =
+    mapreduce(vcat, eachfactor(N)) do (f, c)
+        repeat([f], c)
     end
 
-    a0 = a[1:2:end]  # Get even indices
-    a1 = a[2:2:end]  # Get odd indices
-
-    _fft!(a0, invert)
-    _fft!(a1, invert)
-
-    ang = 2 * π / n * (invert ? -1 : 1)
-    w = Complex(1.0, 0.0)
-    wn = Complex(cos(ang), sin(ang))
-
-    for i in 1:(n ÷ 2)
-        a[i] = a0[i] + w * a1[i]
-        a[i + n ÷ 2] = a0[i] - w * a1[i]
-        if invert
-            a[i] /= 2
-            a[i + n ÷ 2] /= 2
+plan_fft_min(N; method=:dit) = begin
+    @assert (method == :dit) || (method == :dif) "Method needs to be either :dit (decimation-in-time) or :dif (decimation-in-frequency)"
+    # min rad planning
+    # get prime factors of N
+    N_fcts = sort(get_factor_arr(N), rev=true)
+    plan = FFTPlan(N, fft_cooley_tukey)
+    NN = N
+    ptr = plan.plan
+    for f in N_fcts
+        NN = div(NN, f)
+        P = FFTPlan(f, dft)
+        Q = FFTPlan(NN, fft_cooley_tukey)
+        if method == :dit
+            push!(ptr, Q, P)
+        else
+            push!(ptr, P, Q)
         end
-        w *= wn
+        if NN == 1
+            q_index = method == :dit ? 1 : 2
+            ptr[q_index] = FFTPlan(NN, dft)
+            break
+        else
+            ptr = Q.plan
+        end
     end
+    return plan
 end
 
-function fft(a::AbstractVector, invert::Bool = false)
-    # Pad the array if necessary
-    padded_a = pad_to_power_of_two(a)
-	padded_a = padded_a .+ 0im
-    
-    # Perform the FFT in place
-    _fft!(padded_a, invert)
-    
-    # # If performing inverse FFT, scale by the array size
-    if invert
-        padded_a ./= length(padded_a)
-    end
-    
-    return padded_a[1:length(a)]
+plan_fft_max(N; method=:dit) = begin
+    @assert (method == :dit) || (method == :dif) "Method needs to be either :dit (decimation-in-time) or :dif (decimation-in-frequency)"
+    N_fcts = get_factor_arr(N)
+    divs = divisors(N)
 end
 
+dft_1(x) = x
+dft_2(x) = [x[1] + x[2], x[1] - x[2]]
+dft_4(x; inverse::Bool=false, normalize::Bool=false) = begin
+    inv = inverse ? 1 : -1
+    ret = [
+        x[1] + x[2] + x[3] + x[4],
+        x[1] + x[2] * twiddle(inv, 1, 4) + x[3] * twiddle(inv, 2, 4) + x[4] * twiddle(inv, 3, 4),
+        x[1] + x[2] * twiddle(inv, 2, 4) + x[3] * twiddle(inv, 4, 4) + x[4] * twiddle(inv, 6, 4),
+        x[1] + x[2] * twiddle(inv, 3, 4) + x[3] * twiddle(inv, 6, 4) + x[4] * twiddle(inv, 9, 4),
+    ]
+    if normalize
+        ret /= one(eltype(x)) * 4
+    end
+    return ret
+end
+
+dft(x, args...; NN=length(x), inverse::Bool=false, normalize::Bool=inverse) = begin
+    N = length(x)
+    inv = inverse ? 1 : -1
+    X = zeros(eltype(x), N)
+    for k in 1:N
+        for n in 1:N
+            index = div((n - 1) * (k - 1) * NN, N) % NN
+            twid = twiddle(inv, index, NN)
+            X[k] += x[n] * twid
+        end
+        if inverse && normalize
+            X[k] /= NN
+        end
+    end
+    return X
+end
+
+twiddle(inv, ind, NN) = exp(-inv * 2 * π * 1im * ind / NN) # we could cache this
+
+fft_cooley_tukey(x, fft_plan; NN=length(x), inverse=false, normalize=false) = begin
+    N = length(x)
+    X = zeros(eltype(x), N)
+    P = fft_plan.plan[1]
+    Q = fft_plan.plan[2]
+    # inner fft
+    for q in 1:Q.f
+        res = P.method(x[q:Q.f:end], P; NN, inverse=inverse, normalize=false)
+        X[q:Q.f:end] = res
+    end
+    # mul twiddles
+    for q in 1:Q.f
+        for s in 1:P.f
+            index = div((q - 1) * (s - 1) * NN, N)
+            twid = twiddle(inverse ? 1 : -1, index, NN)
+            X[Q.f*(s-1)+q] *= twid
+        end
+    end
+    # outer fft
+    for s in 1:P.f
+        res = Q.method(X[Q.f*(s-1)+1:Q.f*s], Q; NN, inverse=inverse, normalize=false)
+        X[Q.f*(s-1)+1:Q.f*s] = res
+    end
+    ret = zeros(eltype(X), N)
+    for s in 1:P.f
+        ret[s:P.f:end] = X[(s-1)*Q.f+1:s*Q.f]
+    end
+    if inverse && normalize
+        ret ./= N
+    end
+    return ret
+end
+
+plan_fft(N; method=:dit, rad=:min) = begin
+    @assert (method == :dit) || (method == :dif) "Method needs to be either :dit (decimation-in-time) or :dif (decimation-in-frequency)"
+    @assert (rad == :min) || (rad == :max) "Radix mode needs to be either :min or :max"
+    if rad == :min
+        return plan_fft_min(N; method=method)
+    else
+        return plan_fft_max(N; method=method)
+    end
+end
 
 end # module PureFFT
