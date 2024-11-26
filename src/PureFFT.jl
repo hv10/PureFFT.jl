@@ -166,4 +166,31 @@ ifft(x::AbstractArray; method::Symbol=:dit, rad::Symbol=:min) = begin
 end
 ifft(x::AbstractArray, plan::FFTPlan) = fft_cooley_tukey(x, plan; inverse=true, normalize=true)
 
+#=
+# Precompilation Statements for Common Types
+=#
+# precomputed functions
+precompile(dft_1, (ComplexF16,))
+precompile(dft_1, (ComplexF32,))
+precompile(dft_1, (ComplexF64,))
+
+precompile(dft_2, (Vector{ComplexF16},))
+precompile(dft_2, (Vector{ComplexF32},))
+precompile(dft_2, (Vector{ComplexF64},))
+
+precompile(dft_4, (Vector{ComplexF16},))
+precompile(dft_4, (Vector{ComplexF32},))
+precompile(dft_4, (Vector{ComplexF64},))
+
+# public interface
+precompile(fft, (Vector{ComplexF16},))
+precompile(fft, (Vector{ComplexF32},))
+precompile(fft, (Vector{ComplexF64},))
+
+precompile(ifft, (Vector{ComplexF16},))
+precompile(ifft, (Vector{ComplexF32},))
+precompile(ifft, (Vector{ComplexF64},))
+
+precompile(plan_fft, (Int,))
+
 end # module PureFFT
