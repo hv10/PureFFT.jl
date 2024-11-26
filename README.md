@@ -30,7 +30,7 @@ For the following highly composite numbers the execution time on my M1 MacBook A
 | 1680  | 9.4e-4s | 5.3e-2s  |
 | 2048  | 1.4e-3s | 7.8e-2s  |
 | 5040  | 3.3e-3s | 4.8e-1s  |
-| 27720 | 2.2e-2  | 14.7s    |
+| 27720 | 2.2e-2s | 14.7s    |
 
 ## TODO's
 - [ ] Register as Julia Package
