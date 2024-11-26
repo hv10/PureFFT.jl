@@ -2,6 +2,8 @@ module PureFFT
 using Primes
 import Base.show
 
+export fft_cooley_tukey, dft, plan_fft
+
 struct FFTPlan
     f::Int
     method::Function
