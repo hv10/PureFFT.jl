@@ -20,12 +20,12 @@ end
 Base.push!(fp::FFTPlan, args...) = push!(fp.plan, args...)
 FFTPlan(f::Int, method::Function) = FFTPlan(f, method, Vector{FFTPlan}())
 
-get_factor_arr(N) =
+get_factor_arr(N::Int) =
     mapreduce(vcat, eachfactor(N)) do (f, c)
         repeat([f], c)
     end
 
-plan_fft_min(N; method=:dit) = begin
+plan_fft_min(N::Int; method::Symbol=:dit)::FFTPlan = begin
     @assert (method == :dit) || (method == :dif) "Method needs to be either :dit (decimation-in-time) or :dif (decimation-in-frequency)"
     # min rad planning
     # get prime factors of N
@@ -69,14 +69,14 @@ plan_fft_min(N; method=:dit) = begin
     return plan
 end
 
-plan_fft_max(N; method=:dit) = begin
+plan_fft_max(N::Int; method::Symbol=:dit) = begin
     @assert (method == :dit) || (method == :dif) "Method needs to be either :dit (decimation-in-time) or :dif (decimation-in-frequency)"
     throw(ErrorException("Not yet implemented"))
 end
 
-dft_1(x, args...; kwargs...) = x
-dft_2(x, args...; kwargs...) = [x[1] + x[2], x[1] - x[2]]
-dft_4(x, args...; NN=4, inverse::Bool=false, normalize::Bool=false) = begin
+dft_1(x::AbstractArray, args...; kwargs...) = x
+dft_2(x::AbstractArray, args...; kwargs...) = [x[1] + x[2], x[1] - x[2]]
+dft_4(x::AbstractArray, args...; NN::Int=4, inverse::Bool=false, normalize::Bool=false) = begin
     @assert length(x) == 4 "DFT_4 is only valid for 4-element arrays"
     inv = inverse ? 1 : -1
     ret = [
@@ -91,7 +91,7 @@ dft_4(x, args...; NN=4, inverse::Bool=false, normalize::Bool=false) = begin
     return ret
 end
 
-dft(x, args...; NN=length(x), inverse::Bool=false, normalize::Bool=inverse) = begin
+dft(x::AbstractArray, args...; NN::Int=length(x), inverse::Bool=false, normalize::Bool=inverse) = begin
     N = length(x)
     inv = inverse ? 1 : -1
     X = zeros(eltype(x), N)
@@ -110,7 +110,7 @@ end
 
 twiddle(inv, ind, NN) = exp(-inv * 2 * π * 1im * ind / NN) # we could cache this
 
-fft_cooley_tukey(x, fft_plan; NN=length(x), inverse=false, normalize=false) = begin
+fft_cooley_tukey(x::AbstractArray, fft_plan::FFTPlan; NN::Int=length(x), inverse::Bool=false, normalize::Bool=false) = begin
     N = length(x)
     X = zeros(eltype(x), N)
     P = fft_plan.plan[1]
@@ -143,7 +143,7 @@ fft_cooley_tukey(x, fft_plan; NN=length(x), inverse=false, normalize=false) = be
     return ret
 end
 
-plan_fft(N; method=:dit, rad=:min) = begin
+plan_fft(N::Int; method::Symbol=:dit, rad::Symbol=:min) = begin
     @assert (method == :dit) || (method == :dif) "Method needs to be either :dit (decimation-in-time) or :dif (decimation-in-frequency)"
     @assert (rad == :min) || (rad == :max) "Radix mode needs to be either :min or :max"
     if rad == :min
@@ -153,17 +153,17 @@ plan_fft(N; method=:dit, rad=:min) = begin
     end
 end
 
-fft(x; method=:dit, rad=:min) = begin
+fft(x::AbstractArray; method::Symbol=:dit, rad::Symbol=:min) = begin
     plan = plan_fft(length(x); method, rad)
     fft(x, plan)
 end
 
-fft(x, plan) = fft_cooley_tukey(x, plan; inverse=false, normalize=false)
+fft(x::AbstractArray, plan::FFTPlan) = fft_cooley_tukey(x, plan; inverse=false, normalize=false)
 
-ifft(x; method=:dit, rad=:min) = begin
+ifft(x::AbstractArray; method::Symbol=:dit, rad::Symbol=:min) = begin
     plan = plan_fft(length(x); method, rad)
     ifft(x, plan)
 end
-ifft(x, plan) = fft_cooley_tukey(x, plan; inverse=true, normalize=true)
+ifft(x::AbstractArray, plan::FFTPlan) = fft_cooley_tukey(x, plan; inverse=true, normalize=true)
 
 end # module PureFFT
