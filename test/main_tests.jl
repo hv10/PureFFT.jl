@@ -1,5 +1,5 @@
 @testsnippet MakeData begin
-    using Statistics
+    using Statistics, BenchmarkTools
     make_data(len) =
         map(1:len) do t
             sinpi(t / 3.0) + 0im
@@ -117,4 +117,14 @@ end
     @test a_dft ≈ a_ctfft
     a_ctfft_r = PureFFT.fft_cooley_tukey(a_ctfft, plan; inverse=true, normalize=true)
     @test a ≈ a_ctfft_r
+end
+
+@testitem "CT_FFT is faster than dft for bigger inputs" setup = [MakeData] begin
+    a = make_data(1680)
+    plan = PureFFT.plan_fft(1680)
+    display(plan)
+    t_dtf = @belapsed a_dft = PureFFT.dft($a)
+    t_ctfft = @belapsed a_ctfft = PureFFT.fft_cooley_tukey($a, $plan)
+    @info t_dtf, t_ctfft
+    @test t_dtf > t_ctfft
 end
