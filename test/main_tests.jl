@@ -132,3 +132,19 @@ end
         @test t_dtf > t_ctfft
     end
 end
+
+@testitem "Methods are Type Stable" setup = [MakeData] begin
+    a = make_data(360)
+    test_types = [ComplexF16, ComplexF32, ComplexF64]
+    for tt in test_types
+        a_t = tt.(a)
+        plan = PureFFT.plan_fft(360)
+        display(plan)
+        a_dft = PureFFT.dft(a_t)
+        @test typeof(a_t) == typeof(a_dft)
+        a_ctfft = PureFFT.fft_cooley_tukey(a_t, plan)
+        @test typeof(a_t) == typeof(a_ctfft)
+        a_ctfft_r = PureFFT.fft_cooley_tukey(a_ctfft, plan; inverse=true, normalize=true)
+        @test typeof(a_t) == typeof(a_ctfft_r)
+    end
+end
