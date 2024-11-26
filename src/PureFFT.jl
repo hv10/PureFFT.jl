@@ -70,8 +70,7 @@ end
 
 plan_fft_max(N; method=:dit) = begin
     @assert (method == :dit) || (method == :dif) "Method needs to be either :dit (decimation-in-time) or :dif (decimation-in-frequency)"
-    N_fcts = get_factor_arr(N)
-    divs = divisors(N)
+    throw(ErrorException("Not yet implemented"))
 end
 
 dft_1(x, args...; kwargs...) = x
