@@ -2,7 +2,8 @@ module PureFFT
 using Primes
 import Base.show
 
-export fft_cooley_tukey, dft, plan_fft
+export fft_cooley_tukey, dft
+export plan_fft, fft, ifft
 
 struct FFTPlan
     f::Int
@@ -76,6 +77,7 @@ end
 dft_1(x, args...; kwargs...) = x
 dft_2(x, args...; kwargs...) = [x[1] + x[2], x[1] - x[2]]
 dft_4(x, args...; NN=4, inverse::Bool=false, normalize::Bool=false) = begin
+    @assert length(x) == 4 "DFT_4 is only valid for 4-element arrays"
     inv = inverse ? 1 : -1
     ret = [
         x[1] + x[2] + x[3] + x[4],
@@ -150,5 +152,18 @@ plan_fft(N; method=:dit, rad=:min) = begin
         return plan_fft_max(N; method=method)
     end
 end
+
+fft(x; method=:dit, rad=:min) = begin
+    plan = plan_fft(length(x); method, rad)
+    fft(x, plan)
+end
+
+fft(x, plan) = fft_cooley_tukey(x, plan; inverse=false, normalize=false)
+
+ifft(x; method=:dit, rad=:min) = begin
+    plan = plan_fft(length(x); method, rad)
+    ifft(x, plan)
+end
+ifft(x, plan) = fft_cooley_tukey(x, plan; inverse=true, normalize=true)
 
 end # module PureFFT
