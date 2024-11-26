@@ -107,7 +107,6 @@ end
     @test a_dft ≈ a_dft_4
 end
 
-
 @testitem "Check Bigger Input" setup = [MakeData] begin
     a = make_data(360)
     plan = PureFFT.plan_fft(360)
