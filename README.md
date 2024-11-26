@@ -39,4 +39,4 @@ For the following highly composite numbers the execution time on my M1 MacBook A
 - [ ] Edge Case Hunting
 - [ ] Max-Radix Plan not yet implemented
 - [ ] Exhaustive Testing for Planning Method+Approach Combinations
-- [ ] Write the one-stop shop `fft` function combining planning and execution.
+- [x] Write the one-stop shop `fft` function combining planning and execution.
