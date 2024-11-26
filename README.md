@@ -1,5 +1,5 @@
 # PureFFT
-> An implementation of FFT-Algorithm for General Factorizations by Cooley-Tukey, purely in Julia, licensed permissively.
+> An implementation of FFT-Algorithm for General Factorizations by Cooley-Tukey, purely in Julia, licensed permissively. </br>
 > Contributions welcome.
 
 ## Why?
