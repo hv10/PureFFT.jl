@@ -32,7 +32,15 @@ plan_fft_min(N; method=:dit) = begin
     ptr = plan.plan
     for f in N_fcts
         NN = div(NN, f)
-        P = FFTPlan(f, dft)
+        if f == 1
+            P = FFTPlan(f, dft_1)
+        elseif f == 2
+            P = FFTPlan(f, dft_2)
+        elseif f == 4
+            P = FFTPlan(f, dft_4)
+        else
+            P = FFTPlan(f, dft)
+        end
         Q = FFTPlan(NN, fft_cooley_tukey)
         if method == :dit
             push!(ptr, Q, P)
@@ -41,7 +49,15 @@ plan_fft_min(N; method=:dit) = begin
         end
         if NN == 1
             q_index = method == :dit ? 1 : 2
-            ptr[q_index] = FFTPlan(NN, dft)
+            ptr[q_index] = FFTPlan(NN, dft_1)
+            break
+        elseif NN == 2
+            q_index = method == :dit ? 1 : 2
+            ptr[q_index] = FFTPlan(NN, dft_2)
+            break
+        elseif NN == 4
+            q_index = method == :dit ? 1 : 2
+            ptr[q_index] = FFTPlan(NN, dft_4)
             break
         else
             ptr = Q.plan
@@ -56,9 +72,9 @@ plan_fft_max(N; method=:dit) = begin
     divs = divisors(N)
 end
 
-dft_1(x) = x
-dft_2(x) = [x[1] + x[2], x[1] - x[2]]
-dft_4(x; inverse::Bool=false, normalize::Bool=false) = begin
+dft_1(x, args...; kwargs...) = x
+dft_2(x, args...; kwargs...) = [x[1] + x[2], x[1] - x[2]]
+dft_4(x, args...; NN=4, inverse::Bool=false, normalize::Bool=false) = begin
     inv = inverse ? 1 : -1
     ret = [
         x[1] + x[2] + x[3] + x[4],
