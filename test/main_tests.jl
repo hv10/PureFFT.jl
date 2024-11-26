@@ -121,11 +121,14 @@ end
 end
 
 @testitem "CT_FFT is faster than dft for bigger inputs" setup = [MakeData] begin
-    a = make_data(1680)
-    plan = PureFFT.plan_fft(1680)
-    display(plan)
-    t_dtf = @belapsed a_dft = PureFFT.dft($a)
-    t_ctfft = @belapsed a_ctfft = PureFFT.fft_cooley_tukey($a, $plan)
-    @info t_dtf, t_ctfft
-    @test t_dtf > t_ctfft
+    composite_numbers = [1024, 1680, 2048, 5040, 27720]
+    for cn in composite_numbers
+        a = make_data(cn)
+        plan = PureFFT.plan_fft(cn)
+        display(plan)
+        t_dtf = @belapsed a_dft = PureFFT.dft($a)
+        t_ctfft = @belapsed a_ctfft = PureFFT.fft_cooley_tukey($a, $plan)
+        @info t_dtf, t_ctfft
+        @test t_dtf > t_ctfft
+    end
 end
