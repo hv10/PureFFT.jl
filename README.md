@@ -24,13 +24,13 @@ This package provides:
 ## Additional Info
 For the following highly composite numbers the execution time on my M1 MacBook Air is:
 
-| Size  | Time    | DFT-Time |
-|-------|--------:|---------:|
-| 1024  | 6.2e-4s | 1.9e-2s  |
-| 1680  | 9.4e-4s | 5.3e-2s  |
-| 2048  | 1.4e-3s | 7.8e-2s  |
-| 5040  | 3.3e-3s | 4.8e-1s  |
-| 27720 | 2.2e-2s | 14.7s    |
+| Size  | DFT Time | FFT-Time |
+|-------|---------:|---------:|
+| 1024  | 6.2e-4s  | 1.9e-2s  |
+| 1680  | 9.4e-4s  | 5.3e-2s  |
+| 2048  | 1.4e-3s  | 7.8e-2s  |
+| 5040  | 3.3e-3s  | 4.8e-1s  |
+| 27720 | 2.2e-2s  | 14.7s    |
 
 ## TODO's
 - [ ] Register as Julia Package
