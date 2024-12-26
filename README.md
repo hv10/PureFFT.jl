@@ -24,7 +24,7 @@ This package provides:
 ## Additional Info
 For the following highly composite numbers the execution time on my M1 MacBook Air is:
 
-| Size  | DFT Time | FFT-Time |
+| Size  | FFT Time | DFT-Time |
 |-------|---------:|---------:|
 | 1024  | 6.2e-4s  | 1.9e-2s  |
 | 1680  | 9.4e-4s  | 5.3e-2s  |
