@@ -9,7 +9,7 @@ Most projects I am aware of use FFTW (dual licensed GPL + Commercial by MIT) or 
 I wanted to learn how the Algorithm works, so I spend a few afternoons on understanding the literature about it.
 Then I tried implementing it from scratch.
 
-Long term, I would like to make this a drop in replacement for other FFT Packages, therefore we might need to commmit to matching an existing API.
+Long term, I would like to make this a drop in replacement for other FFT Packages, therefore we might need to commit to matching an existing API.
 
 ## What?
 This package provides:
