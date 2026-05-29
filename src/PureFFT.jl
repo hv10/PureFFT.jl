@@ -20,60 +20,19 @@ end
 Base.push!(fp::FFTPlan, args...) = push!(fp.plan, args...)
 FFTPlan(f::Int, method::Function) = FFTPlan(f, method, Vector{FFTPlan}())
 
+#=
+Helper Functions
+=#
 get_factor_arr(N::Int) =
     mapreduce(vcat, eachfactor(N)) do (f, c)
         repeat([f], c)
     end
 
-plan_fft_min(N::Int; method::Symbol=:dit)::FFTPlan = begin
-    @assert (method == :dit) || (method == :dif) "Method needs to be either :dit (decimation-in-time) or :dif (decimation-in-frequency)"
-    # min rad planning
-    # get prime factors of N
-    N_fcts = sort(get_factor_arr(N), rev=true)
-    plan = FFTPlan(N, fft_cooley_tukey)
-    NN = N
-    ptr = plan.plan
-    for f in N_fcts
-        NN = div(NN, f)
-        if f == 1
-            P = FFTPlan(f, dft_1)
-        elseif f == 2
-            P = FFTPlan(f, dft_2)
-        elseif f == 4
-            P = FFTPlan(f, dft_4)
-        else
-            P = FFTPlan(f, dft)
-        end
-        Q = FFTPlan(NN, fft_cooley_tukey)
-        if method == :dit
-            push!(ptr, Q, P)
-        else
-            push!(ptr, P, Q)
-        end
-        if NN == 1
-            q_index = method == :dit ? 1 : 2
-            ptr[q_index] = FFTPlan(NN, dft_1)
-            break
-        elseif NN == 2
-            q_index = method == :dit ? 1 : 2
-            ptr[q_index] = FFTPlan(NN, dft_2)
-            break
-        elseif NN == 4
-            q_index = method == :dit ? 1 : 2
-            ptr[q_index] = FFTPlan(NN, dft_4)
-            break
-        else
-            ptr = Q.plan
-        end
-    end
-    return plan
-end
+twiddle(inv, ind, NN) = exp(-inv * 2 * π * 1im * ind / NN) # we could cache this
 
-plan_fft_max(N::Int; method::Symbol=:dit) = begin
-    @assert (method == :dit) || (method == :dif) "Method needs to be either :dit (decimation-in-time) or :dif (decimation-in-frequency)"
-    throw(ErrorException("Not yet implemented"))
-end
-
+#= 
+DFT Implementations
+=#
 dft_1(x::AbstractArray, args...; kwargs...) = x
 dft_2(x::AbstractArray, args...; kwargs...) = [x[1] + x[2], x[1] - x[2]]
 dft_4(x::AbstractArray, args...; NN::Int=4, inverse::Bool=false, normalize::Bool=false) = begin
@@ -95,8 +54,8 @@ dft(x::AbstractArray, args...; NN::Int=length(x), inverse::Bool=false, normalize
     N = length(x)
     inv = inverse ? 1 : -1
     X = zeros(eltype(x), N)
-    for k in 1:N
-        for n in 1:N
+    @inbounds for k in 1:N
+        @inbounds for n in 1:N
             index = div((n - 1) * (k - 1) * NN, N) % NN
             twid = twiddle(inv, index, NN)
             X[k] += x[n] * twid
@@ -108,7 +67,85 @@ dft(x::AbstractArray, args...; NN::Int=length(x), inverse::Bool=false, normalize
     return X
 end
 
-twiddle(inv, ind, NN) = exp(-inv * 2 * π * 1im * ind / NN) # we could cache this
+#=
+Codelet Dispatch
+=#
+const CODELET_MAP = Dict{Int,Function}(
+    1 => dft_1,
+    2 => dft_2,
+    4 => dft_4,
+)
+# Sorted largest-first; updated by retune() / tuned_codelets.jl
+const CODELET_SIZES = Ref{Vector{Int}}([4, 2, 1])
+
+"""
+    get_codelet(r) -> FFTPlan
+
+Look up the best available codelet for size `r`.
+Falls back to the generic `dft` for any size not in CODELET_MAP.
+"""
+get_codelet(r::Int)::FFTPlan = FFTPlan(r, get(CODELET_MAP, r, dft))
+
+#=
+Planning Strategies
+=#
+plan_fft_min(N::Int; method::Symbol=:dit)::FFTPlan = begin
+    @assert (method == :dit) || (method == :dif) "Method must be :dit or :dif"
+
+    N_fcts = sort(get_factor_arr(N), rev=true)   # largest primes first
+    plan = FFTPlan(N, fft_cooley_tukey)
+    NN = N
+    ptr = plan.plan
+
+    for f in N_fcts
+        NN = div(NN, f)
+        P = get_codelet(f)
+        Q = NN <= 4 || haskey(CODELET_MAP, NN) ? get_codelet(NN) : FFTPlan(NN, fft_cooley_tukey)
+
+        method == :dit ? push!(ptr, P, Q) : push!(ptr, Q, P) # recursion remainder in back, small radix first.
+
+        (NN == 1 || haskey(CODELET_MAP, NN)) && break
+        ptr = Q.plan
+    end
+
+    return plan
+end
+
+plan_fft_max(N::Int; method::Symbol=:dit)::FFTPlan = begin
+    @assert (method == :dit) || (method == :dif) "Method must be :dit or :dif"
+
+    plan = FFTPlan(N, fft_cooley_tukey)
+    NN = N
+    ptr = plan.plan
+
+    while NN > 1
+        divisors = [c for c in CODELET_SIZES[] if c > 1 && NN % c == 0]
+
+        r = !isempty(divisors) ?
+            maximum(divisors) :
+            minimum(p for p in keys(factor(NN)) if p > 1)
+
+        NN_next = div(NN, r)
+
+        @assert NN_next < NN || NN == 1
+
+        P = get_codelet(r)
+
+        Q = (NN_next == 1 || haskey(CODELET_MAP, NN_next)) ?
+            get_codelet(NN_next) :
+            FFTPlan(NN_next, fft_cooley_tukey)
+
+        method == :dit ? push!(ptr, Q, P) : push!(ptr, P, Q)
+
+        (NN_next <= 1 || haskey(CODELET_MAP, NN_next)) && break
+
+        ptr = Q.plan
+        NN = NN_next
+    end
+
+    return plan
+end
+
 
 fft_cooley_tukey(x::AbstractArray, fft_plan::FFTPlan; NN::Int=length(x), inverse::Bool=false, normalize::Bool=false) = begin
     N = length(x)
@@ -117,79 +154,67 @@ fft_cooley_tukey(x::AbstractArray, fft_plan::FFTPlan; NN::Int=length(x), inverse
     Q = fft_plan.plan[2]
     # inner fft
     for q in 1:Q.f
-        res = P.method(x[q:Q.f:end], P; NN, inverse=inverse, normalize=false)
-        X[q:Q.f:end] = res
+        X[q:Q.f:end] = P.method(@view(x[q:Q.f:end]), P; NN, inverse=inverse, normalize=false)
     end
     # mul twiddles
-    for q in 1:Q.f
-        for s in 1:P.f
-            index = div((q - 1) * (s - 1) * NN, N)
-            twid = twiddle(inverse ? 1 : -1, index, NN)
-            X[Q.f*(s-1)+q] *= twid
-        end
+    @inbounds for q in 1:Q.f, s in 1:P.f
+        index = div((q - 1) * (s - 1) * NN, N)
+        X[Q.f*(s-1)+q] *= twiddle(inverse ? 1 : -1, index, NN)
     end
     # outer fft
-    for s in 1:P.f
-        res = Q.method(X[Q.f*(s-1)+1:Q.f*s], Q; NN, inverse=inverse, normalize=false)
-        X[Q.f*(s-1)+1:Q.f*s] = res
+    @inbounds for s in 1:P.f
+        X[Q.f*(s-1)+1:Q.f*s] = Q.method(@view(X[Q.f*(s-1)+1:Q.f*s]), Q; NN, inverse=inverse, normalize=false)
     end
-    ret = zeros(eltype(X), N)
-    for s in 1:P.f
-        ret[s:P.f:end] = X[(s-1)*Q.f+1:s*Q.f]
-    end
-    if inverse && normalize
-        ret ./= N
-    end
+    ret = vec(@views permutedims(reshape(X, Q.f, P.f)))
+    inverse && normalize && (ret ./= N)
     return ret
 end
 
 plan_fft(N::Int; method::Symbol=:dit, rad::Symbol=:min) = begin
     @assert (method == :dit) || (method == :dif) "Method needs to be either :dit (decimation-in-time) or :dif (decimation-in-frequency)"
     @assert (rad == :min) || (rad == :max) "Radix mode needs to be either :min or :max"
-    if rad == :min
-        return plan_fft_min(N; method=method)
-    else
-        return plan_fft_max(N; method=method)
-    end
+    return rad == :min ? plan_fft_min(N; method=method) : plan_fft_max(N; method=method)
 end
 
-fft(x::AbstractArray; method::Symbol=:dit, rad::Symbol=:min) = begin
-    plan = plan_fft(length(x); method, rad)
-    fft(x, plan)
-end
-
+fft(x::AbstractArray; method::Symbol=:dit, rad::Symbol=:min) = fft(x, plan_fft(length(x); method, rad))
 fft(x::AbstractArray, plan::FFTPlan) = fft_cooley_tukey(x, plan; inverse=false, normalize=false)
 
-ifft(x::AbstractArray; method::Symbol=:dit, rad::Symbol=:min) = begin
-    plan = plan_fft(length(x); method, rad)
-    ifft(x, plan)
-end
+ifft(x::AbstractArray; method::Symbol=:dit, rad::Symbol=:min) = ifft(x, plan_fft(length(x); method, rad))
 ifft(x::AbstractArray, plan::FFTPlan) = fft_cooley_tukey(x, plan; inverse=true, normalize=true)
+
+#=
+Machine-Specific Tuning
+=#
+include("tuning.jl")
+
+# Load machine-tuned codelets if they exist; otherwise stay with hand-written fallbacks
+const TUNED_FILE = joinpath(@__DIR__, "generated" , "tuned_codelets.jl")
+
+if isfile(TUNED_FILE)
+    include(TUNED_FILE)
+    if TUNED_CPU != Sys.CPU_NAME
+        @warn "PureFFT tuning cache was built for a different CPU. Run PureFFT.retune()."
+    end
+    merge!(CODELET_MAP, TUNED_CODELET_MAP)
+    CODELET_SIZES[] = TUNED_CODELET_SIZES
+    @info "PureFFT: loaded tuned codelets, sizes = $(TUNED_CODELET_SIZES)"
+else
+    @info "PureFFT: no tuned codelets found — run PureFFT.retune() to generate them"
+end
+
 
 #=
 # Precompilation Statements for Common Types
 =#
-# precomputed functions
-precompile(dft_1, (ComplexF16,))
-precompile(dft_1, (ComplexF32,))
-precompile(dft_1, (ComplexF64,))
-
-precompile(dft_2, (Vector{ComplexF16},))
-precompile(dft_2, (Vector{ComplexF32},))
-precompile(dft_2, (Vector{ComplexF64},))
-
-precompile(dft_4, (Vector{ComplexF16},))
-precompile(dft_4, (Vector{ComplexF32},))
-precompile(dft_4, (Vector{ComplexF64},))
-
-# public interface
-precompile(fft, (Vector{ComplexF16},))
-precompile(fft, (Vector{ComplexF32},))
-precompile(fft, (Vector{ComplexF64},))
-
-precompile(ifft, (Vector{ComplexF16},))
-precompile(ifft, (Vector{ComplexF32},))
-precompile(ifft, (Vector{ComplexF64},))
+for T in [Vector{ComplexF64}, Vector{ComplexF32}, Vector{ComplexF16}]
+    # codelets
+    precompile(dft_1, (T,))
+    precompile(dft_2, (T,))
+    precompile(dft_4, (T,))
+    # public interface
+    precompile(fft, (T,))
+    precompile(ifft, (T,))
+end
 
 precompile(plan_fft, (Int,))
 

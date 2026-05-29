@@ -86,6 +86,15 @@ end
     @test a_dft ≈ a_ctfft
 end
 
+@testitem "Generated Codelet Correctness" setup = [MakeData] begin
+    for k in PureFFT.TUNED_CODELET_SIZES
+        a = make_data(k)
+        a_dft = PureFFT.dft(a)
+        a_dft_k = PureFFT.TUNED_CODELET_MAP[k](a)
+        @test a_dft ≈ a_dft_k
+    end
+end
+
 @testitem "DFT_1 matches DFT" setup = [MakeData] begin
     a = make_data(1)
     a_dft = PureFFT.dft(a)
@@ -112,7 +121,7 @@ end
     plan = PureFFT.plan_fft(360)
     display(plan)
     a_dft = PureFFT.dft(a)
-    a_ctfft = PureFFT.fft_cooley_tukey(a, plan)
+    @timev a_ctfft = PureFFT.fft_cooley_tukey(a, plan)
     @test a_dft ≈ a_ctfft
     a_ctfft_r = PureFFT.fft_cooley_tukey(a_ctfft, plan; inverse=true, normalize=true)
     @test a ≈ a_ctfft_r
@@ -146,5 +155,17 @@ end
         @test typeof(a_t) == typeof(a_ctfft)
         a_ctfft_r = PureFFT.fft_cooley_tukey(a_ctfft, plan; inverse=true, normalize=true)
         @test typeof(a_t) == typeof(a_ctfft_r)
+    end
+end
+
+@testitem "DFT, Min-Radix and Max-Radix are equal in result." setup = [MakeData] begin
+    N = 24576
+    a = make_data(N)
+    a_dft = PureFFT.dft(a)
+
+    for method in [:dit, :dif], rad in [:min, :max]
+        plan = PureFFT.plan_fft(N; rad=rad, method=method)
+        a_ctfft = PureFFT.fft_cooley_tukey(a, plan)
+        @test a_dft ≈ a_ctfft
     end
 end
